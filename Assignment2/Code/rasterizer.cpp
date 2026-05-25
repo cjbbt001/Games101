@@ -41,32 +41,28 @@ auto to_vec4(const Eigen::Vector3f& v3, float w = 1.0f)
 }
 
 
-static bool insideTriangle(int x, int y, const Vector3f* _v)
+static bool insideTriangle(float x, float y, const Vector3f* _v)
 {   
     // TODO : Implement this function to check if the point (x, y) is inside the triangle represented by _v[0], _v[1], _v[2]
 
-    Vector3f A = _v[0];
-    Vector3f B = _v[1];
-    Vector3f C = _v[2];
+    // 三条边向量：AB、BC、CA
+    float ABx = _v[1].x() - _v[0].x(),  ABy = _v[1].y() - _v[0].y();
+    float BCx = _v[2].x() - _v[1].x(),  BCy = _v[2].y() - _v[1].y();
+    float CAx = _v[0].x() - _v[2].x(),  CAy = _v[0].y() - _v[2].y();
 
-    Vector3f AB = B - A;
-    Vector3f BC = C - B;
-    Vector3f CA = A - C;
+    // 边起点到 P 的向量
+    float APx = x - _v[0].x(),  APy = y - _v[0].y();
+    float BPx = x - _v[1].x(),  BPy = y - _v[1].y();
+    float CPx = x - _v[2].x(),  CPy = y - _v[2].y();
 
-    Vector3f P;
-    P << x, y , A[2];
+    // 2D 叉积 z 分量：ux*vy - uy*vx
+    float z1 = ABx * APy - ABy * APx;
+    float z2 = BCx * BPy - BCy * BPx;
+    float z3 = CAx * CPy - CAy * CPx;
 
-    Vector3f AP = P - A;
-    Vector3f BP = P - B;
-    Vector3f CP = P - C;
-
-    Vector3f AB_cross_AP = AB.cross(AP);
-    Vector3f BC_cross_BP = BC.cross(BP);
-    Vector3f CA_cross_CP = CA.cross(CP);
-
-    return AB_cross_AP.dot(BC_cross_BP)>0 && 
-            BC_cross_BP.dot(CA_cross_CP)>0 && 
-            CA_cross_CP.dot(AB_cross_AP)>0;
+    // 三个同正或同负，说明 P 在三角形内
+    return (z1 > 0 && z2 > 0 && z3 > 0) ||
+           (z1 < 0 && z2 < 0 && z3 < 0);
 }
 
 static std::tuple<float, float, float> computeBarycentric2D(float x, float y, const Vector3f* v)
@@ -158,60 +154,52 @@ void rst::rasterizer::rasterize_triangle(const Triangle& t) {
 
     // TODO : set the current pixel (use the set_pixel function) to the color of the triangle (use getColor function) if it should be painted.
 
-    //v包含三角形的顶点坐标数据
-    //v[i][j] i表示顶点索引 j为0时表示为x轴坐标，为1时表示为y坐标
+    // 第一步：包围盒
+    float min_x = std::floor(std::min({v[0][0], v[1][0], v[2][0]}));
+    float max_x = std::ceil (std::max({v[0][0], v[1][0], v[2][0]}));
+    float min_y = std::floor(std::min({v[0][1], v[1][1], v[2][1]}));
+    float max_y = std::ceil (std::max({v[0][1], v[1][1], v[2][1]}));
 
-    float min_x = std::min(v[0][0], std::min(v[1][0], v[2][0]));
-    float max_x = std::max(v[0][0], std::max(v[1][0], v[2][0]));
-    float min_y = std::min(v[0][1], std::min(v[1][1], v[2][1]));
-    float max_y = std::max(v[0][1], std::max(v[1][1], v[2][1]));
+    // 第二步：遍历包围盒内每个像素
+    for (int x = min_x; x < max_x; x++) {
+        for (int y = min_y; y < max_y; y++) {
 
-    min_x = std::floor(min_x);
-    max_x = std::ceil(max_x);
-    min_y = std::floor(min_y);
-    max_y = std::ceil(max_y);
+            if (SSAA) {
+                // 4 个子采样点偏移
+                float offsets[4][2] = {{0.25, 0.25}, {0.25, 0.75}, {0.75, 0.25}, {0.75, 0.75}};
 
-    for(int x = min_x; x < max_x; x++)
-    {
-        for(int y = min_y; y < max_y; y++)
-        {
-            float min_depth = FLT_MAX;
-            if(SSAA)
-            {
-                //child pixel
-                int index = 0;
-                for (float i = 0.25; i < 1.0; i += 0.5) {
-                    for (float j = 0.25; j < 1.0; j += 0.5)
-                    {
-                        if (insideTriangle(x + i + 0.5, y + j + 0.5, t.v)) {
-                            auto [alpha, beta, gamma] = computeBarycentric2D(x + i, y + j, t.v);
-                            float w_reciprocal = 1.0 / (alpha / v[0].w() + beta / v[1].w() + gamma / v[2].w());
-                            float z_interpolated = alpha * v[0].z() / v[0].w() + beta * v[1].z() / v[1].w() + gamma * v[2].z() / v[2].w();
-                            z_interpolated *= w_reciprocal;
-                            min_depth = std::min(min_depth, z_interpolated);
-                            if (min_depth < depth_buf_2xSSAA[get_index(x, y)][index]) {                 
-                                frame_buf_2xSSAA[get_index(x, y)][index] = t.getColor();
-                                depth_buf_2xSSAA[get_index(x, y)][index] = min_depth;
-                            }
+                for (int idx = 0; idx < 4; idx++) {
+                    float sx = x + offsets[idx][0];
+                    float sy = y + offsets[idx][1];
+
+                    if (insideTriangle(sx, sy, t.v)) {
+                        auto [alpha, beta, gamma] = computeBarycentric2D(sx, sy, t.v);
+                        float w_reciprocal = 1.0 / (alpha / v[0].w() + beta / v[1].w() + gamma / v[2].w());
+                        float z_interpolated = alpha * v[0].z() / v[0].w() + beta * v[1].z() / v[1].w() + gamma * v[2].z() / v[2].w();
+                        z_interpolated *= w_reciprocal;
+                        z_interpolated = -z_interpolated;
+
+                        if (z_interpolated < depth_buf_2xSSAA[get_index(x, y)][idx]) {
+                            depth_buf_2xSSAA[get_index(x, y)][idx] = z_interpolated;
+                            frame_buf_2xSSAA[get_index(x, y)][idx] = t.getColor();
                         }
-                        index++;
                     }
                 }
-            }
-            else
-            {
-                if(insideTriangle(x, y, t.v))
-                {
-                    auto[alpha, beta, gamma] = computeBarycentric2D(x, y, t.v);
-                    float w_reciprocal = 1.0/(alpha / v[0].w() + beta / v[1].w() + gamma / v[2].w());
+            } else {
+                // 判断像素中心是否在三角形内
+                if (insideTriangle(x, y, t.v)) {
+
+                    // 透视矫正插值，算出该像素的深度 z
+                    auto [alpha, beta, gamma] = computeBarycentric2D(x, y, t.v);
+                    float w_reciprocal = 1.0 / (alpha / v[0].w() + beta / v[1].w() + gamma / v[2].w());
                     float z_interpolated = alpha * v[0].z() / v[0].w() + beta * v[1].z() / v[1].w() + gamma * v[2].z() / v[2].w();
                     z_interpolated *= w_reciprocal;
-                    min_depth = std::min(min_depth, z_interpolated);            
-                    if(min_depth < depth_buf[get_index(x, y)])
-                    {
-                        depth_buf[get_index(x, y)] = min_depth;
-                        Eigen::Vector3f point(x, y, 1.0f);
-                        set_pixel(point, t.getColor());
+                    z_interpolated = -z_interpolated;
+
+                    // 深度测试：更近才写入
+                    if (z_interpolated < depth_buf[get_index(x, y)]) {
+                        depth_buf[get_index(x, y)] = z_interpolated;
+                        set_pixel(Eigen::Vector3f(x, y, 1.0f), t.getColor());
                     }
                 }
             }

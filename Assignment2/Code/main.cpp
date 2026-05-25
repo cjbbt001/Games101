@@ -34,47 +34,44 @@ Eigen::Matrix4f get_projection_matrix(float eye_fov, float aspect_ratio, float z
 
     // Edit begin
 
-    Eigen::Matrix4f projection;
+    Eigen::Matrix4f projection = Eigen::Matrix4f::Identity();
 
-    float angel = eye_fov / 180.0 * MY_PI;
-    float t = zNear * std::tan(angel/2);
+    float eye_fov_rad = eye_fov / 180.0f * MY_PI;
+
+    float n = -zNear;
+    float f = -zFar;
+
+    float t = std::tan(eye_fov_rad / 2.0f) * std::abs(n);
+    float b = -t;
     float r = t * aspect_ratio;
     float l = -r;
-    float b = -t;
 
-    Eigen::Matrix4f MorthoScale(4,4);
-    MorthoScale << 2/(r - l) , 0, 0, 0,
-            0, 2/(t - b) , 0, 0,
-            0, 0, 2/(zFar - zNear), 0,
-            0, 0, 0, 1;
+    Eigen::Matrix4f M_persp_to_ortho = Eigen::Matrix4f::Zero();
 
-    Eigen::Matrix4f MorthoPos(4,4);
-    MorthoPos << 1, 0, 0, -(r + l)/2,
-            0, 1, 0, -(t + b)/2,
-            0, 0, 1, -(zNear + zFar)/2,
-            0, 0, 0, 1;
-    
+    M_persp_to_ortho << n, 0, 0, 0,
+                        0, n, 0, 0,
+                        0, 0, n + f, -n * f,
+                        0, 0, 1, 0;
 
-    Eigen::Matrix4f Mpersp2ortho(4,4);
+    Eigen::Matrix4f M_ortho_translate = Eigen::Matrix4f::Identity();
 
-    Mpersp2ortho << zNear, 0, 0, 0,
-                0, zNear, 0, 0,
-                0, 0, zNear + zFar, -zNear * zFar,
-                0, 0, 1, 0;
+    M_ortho_translate << 1, 0, 0, -(r + l) / 2.0f,
+                         0, 1, 0, -(t + b) / 2.0f,
+                         0, 0, 1, -(n + f) / 2.0f,
+                         0, 0, 0, 1;
 
-    //为了使得三角形是正着显示的，这里需要把透视矩阵乘以下面这样的矩阵
-    //参考：http://games-cn.org/forums/topic/%e4%bd%9c%e4%b8%9a%e4%b8%89%e7%9a%84%e7%89%9b%e5%80%92%e8%bf%87%e6%9d%a5%e4%ba%86/
-    Eigen::Matrix4f Mt(4,4);
-    Mt << 1, 0, 0, 0,
-        0, 1, 0, 0,
-        0, 0, -1, 0,
-        0, 0, 0, 1; 
+    Eigen::Matrix4f M_ortho_scale = Eigen::Matrix4f::Identity();
 
-    Mpersp2ortho = Mpersp2ortho *Mt;
-    
-    projection = MorthoScale * MorthoPos * Mpersp2ortho * projection;
+    M_ortho_scale << 2.0f / (r - l), 0, 0, 0,
+                     0, 2.0f / (t - b), 0, 0,
+                     0, 0, 2.0f / (n - f), 0,
+                     0, 0, 0, 1;
+
+    projection = M_ortho_scale * M_ortho_translate * M_persp_to_ortho;
+
 
     return projection;
+
 
     // Edit end
 }
