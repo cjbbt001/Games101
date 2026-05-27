@@ -34,44 +34,43 @@ Eigen::Matrix4f get_projection_matrix(float eye_fov, float aspect_ratio, float z
 
     // Edit begin
 
-    Eigen::Matrix4f projection = Eigen::Matrix4f::Identity();
+    Eigen::Matrix4f projection;
 
-    float eye_fov_rad = eye_fov / 180.0f * MY_PI;
-
-    float n = -zNear;
-    float f = -zFar;
-
-    float t = std::tan(eye_fov_rad / 2.0f) * std::abs(n);
-    float b = -t;
+    float angle_rad = eye_fov / 180.0f * MY_PI;
+    float t = zNear * std::tan(angle_rad / 2);
     float r = t * aspect_ratio;
     float l = -r;
+    float b = -t;
 
-    Eigen::Matrix4f M_persp_to_ortho = Eigen::Matrix4f::Zero();
+    Eigen::Matrix4f M_ortho_scale(4, 4);
+    M_ortho_scale << 2 / (r - l), 0, 0, 0,
+        0, 2 / (t - b), 0, 0,
+        0, 0, 2 / (zFar - zNear), 0,
+        0, 0, 0, 1;
 
-    M_persp_to_ortho << n, 0, 0, 0,
-                        0, n, 0, 0,
-                        0, 0, n + f, -n * f,
-                        0, 0, 1, 0;
+    Eigen::Matrix4f M_ortho_translate(4, 4);
+    M_ortho_translate << 1, 0, 0, -(r + l) / 2,
+        0, 1, 0, -(t + b) / 2,
+        0, 0, 1, -(zNear + zFar) / 2,
+        0, 0, 0, 1;
 
-    Eigen::Matrix4f M_ortho_translate = Eigen::Matrix4f::Identity();
+    Eigen::Matrix4f M_persp_to_ortho(4, 4);
+    M_persp_to_ortho << zNear, 0, 0, 0,
+        0, zNear, 0, 0,
+        0, 0, zNear + zFar, -zNear * zFar,
+        0, 0, 1, 0;
 
-    M_ortho_translate << 1, 0, 0, -(r + l) / 2.0f,
-                         0, 1, 0, -(t + b) / 2.0f,
-                         0, 0, 1, -(n + f) / 2.0f,
-                         0, 0, 0, 1;
+    Eigen::Matrix4f M_flip(4, 4);
+    M_flip << 1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, -1, 0,
+        0, 0, 0, 1;
 
-    Eigen::Matrix4f M_ortho_scale = Eigen::Matrix4f::Identity();
-
-    M_ortho_scale << 2.0f / (r - l), 0, 0, 0,
-                     0, 2.0f / (t - b), 0, 0,
-                     0, 0, 2.0f / (n - f), 0,
-                     0, 0, 0, 1;
+    M_persp_to_ortho = M_persp_to_ortho * M_flip;
 
     projection = M_ortho_scale * M_ortho_translate * M_persp_to_ortho;
 
-
     return projection;
-
 
     // Edit end
 }

@@ -177,7 +177,6 @@ void rst::rasterizer::rasterize_triangle(const Triangle& t) {
                         float w_reciprocal = 1.0 / (alpha / v[0].w() + beta / v[1].w() + gamma / v[2].w());
                         float z_interpolated = alpha * v[0].z() / v[0].w() + beta * v[1].z() / v[1].w() + gamma * v[2].z() / v[2].w();
                         z_interpolated *= w_reciprocal;
-                        z_interpolated = -z_interpolated;
 
                         if (z_interpolated < depth_buf_2xSSAA[get_index(x, y)][idx]) {
                             depth_buf_2xSSAA[get_index(x, y)][idx] = z_interpolated;
@@ -194,7 +193,6 @@ void rst::rasterizer::rasterize_triangle(const Triangle& t) {
                     float w_reciprocal = 1.0 / (alpha / v[0].w() + beta / v[1].w() + gamma / v[2].w());
                     float z_interpolated = alpha * v[0].z() / v[0].w() + beta * v[1].z() / v[1].w() + gamma * v[2].z() / v[2].w();
                     z_interpolated *= w_reciprocal;
-                    z_interpolated = -z_interpolated;
 
                     // 深度测试：更近才写入
                     if (z_interpolated < depth_buf[get_index(x, y)]) {
